@@ -1,0 +1,2 @@
+# mac_zip_ignore_Automator
+Macの右クリックから隠しファイルとかが入らないようにな感じのやつ
