@@ -18,7 +18,9 @@
 
 import pygame
 from pygame.locals import *
+from pygame.math import Vector2
 import sys
+import math
 
 
 class Color:
@@ -52,7 +54,6 @@ class Color:
 	def getTuple(self):
 		"""Pygame 用に tuple へ変換"""
 		return (self.r, self.g, self.b)
-
 
 #
 class Size:
@@ -143,17 +144,23 @@ class Point:
 	"""
 
 	def __init__(self, x, y):
-		self.x = x
-		self.y = y
-
-	@classmethod
-	def fromSize(cls, size: Size):
-		"""Size を Point として解釈"""
-		return cls(size.getWidth(), size.getHeight())
-
-	@classmethod
-	def fromTuple(cls, tuple: tuple):
-		return cls(tuple[0], tuple[1])
+		if type(x) == int or type(x) == float:
+			if type(y) == int or type(y) == float:
+				self.x = x
+				self.y = y
+			else:
+				raise TypeError("Invalid type for y coordinate")
+		elif type(x) == Size:
+			self.x = x.getWidth()
+			self.y = x.getHeight()
+		elif type(x) == tuple:
+			self.x = x[0]
+			self.y = x[1]
+		elif type(x) == Vector2:
+			self.x = x.x
+			self.y = x.y
+		else:
+			raise TypeError("Invalid type for Point initialization")
 
 	# Point 同士の加算
 	#
@@ -167,25 +174,47 @@ class Point:
 			return Point(self.x + other[0], self.y + other[1])
 		elif type(other) == int or type(other) == float:
 			return Point(self.x + other, self.y + other)
+		elif type(other) == Vector2:
+			return Point(self.x + other.x, self.y + other.y)
 		else:
 			raise TypeError("Invalid type for addition")
+	def setPosition(self, other):
+		if type(other) == Point:
+			self.x = other.x
+			self.y = other.y
+		elif type(other) == Size:
+			self.x = other.getWidth()
+			self.y = other.getHeight()
+		elif type(other) == tuple:
+			self.x = other[0]
+			self.y = other[1]
+		elif type(other) == int or type(other) == float:
+			self.x = other
+			self.y = other
+		else:
+			raise TypeError("Invalid type for setting position")
+
 	def getTuple(self):
 		return (self.x, self.y)
+	def setX(self, x):
+		self.x = x
 	def getX(self):
 		return self.x
+	def setY(self, y):
+		self.y = y
 	def getY(self):
 		return self.y
 	
-class Vector:
-	def __init__(self, x, y):
-		self.x = x
-		self.y = y
-	def getTuple(self):
-		return (self.x, self.y)
-	def getX(self):
-		return self.x
-	def getY(self):
-		return self.y
+# class Vector:
+# 	def __init__(self, x, y):
+# 		self.x = x
+# 		self.y = y
+# 	def getTuple(self):
+# 		return (self.x, self.y)
+# 	def getX(self):
+# 		return self.x
+# 	def getY(self):
+# 		return self.y
 
 class Rect:
 	def __init__(self, x, y, width, height):
@@ -215,6 +244,26 @@ class Rect:
 		return self.height
 	def getSize(self):
 		return Size(self.width, self.height)
+	
+class Controller():
+	def __init__(self):
+		self.mouse_pos = Point(0, 0)
+		self.key_state = {}
+
+	def update(self):
+		# イベント処理
+		for event in pygame.event.get():  # イベントを取得
+			if event.type == QUIT:        # 閉じるボタンが押されたら終了
+				pygame.quit()             # Pygameの終了(ないと終われない)
+				sys.exit()                # 終了（ないとエラーで終了することになる）
+			elif event.type == KEYDOWN:
+				self.key_state[event.key] = True
+			elif event.type == KEYUP:
+				self.key_state[event.key] = False
+			elif event.type == MOUSEMOTION:
+				self.mouse_pos.setPosition(event.pos)
+		pass
+
 class Object:
 	"""
 	描画オブジェクトの基底クラス。
@@ -228,20 +277,40 @@ class Object:
 	def __init__(self, point: Point):
 		self.children = []
 		self.parent = None
-		self.position = point
+		if type(point) == Point:
+			self.position = point
+		elif type(point) == Size:
+			self.position = Point(point.getWidth(), point.getHeight())
+		elif type(point) == tuple:
+			self.position = Point(point[0], point[1])
+		elif type(point) == Vector2:
+			self.position = Point(point.x, point.y)
+		else:
+			raise TypeError("Invalid type for position")
 
 	def addChild(self, child: 'Object'):
 		"""子オブジェクト追加"""
 		self.children.append(child)
 		child.___setParent(self)
-
+	def getChildren(self):
+		return self.children
 	def ___setParent(self, parent: 'Object'):
 		self.parent = parent
 
 	def getPos(self) -> Point:
 		"""ローカル座標"""
 		return self.position
-
+	def setPos(self, pos):
+		if type(pos) == Point:
+			self.position = pos
+		elif type(pos) == Size:
+			self.position = Point(pos.getWidth(), pos.getHeight())
+		elif type(pos) == tuple:
+			self.position = Point(pos[0], pos[1])
+		elif type(pos) == Vector2:
+			self.position = Point(pos.x, pos.y)
+		else:
+			raise TypeError("Invalid type for position")
 	def getWorldPos(self) -> Point:
 		"""
 		親座標を含めたワールド座標を取得。
@@ -254,8 +323,10 @@ class Object:
 		else:
 			return self.parent.getWorldPos() + self.getPos()
 
-	def update(self):
+	def update(self, T: Controller):
 		"""毎フレーム更新用"""
+		for child in self.children:
+			child.update(T)
 		pass
 
 	def draw(self, screen):
@@ -263,6 +334,9 @@ class Object:
 		for child in self.children:
 			child.draw(screen)
 
+class World(Object):
+	def __init__(self,point: Point):
+		super().__init__(point)
 
 class Circle(Object):
 	"""
@@ -297,8 +371,8 @@ class Circle(Object):
 	def getRadius(self):
 		return self.radius
 
-	def update(self):
-		pass
+	# def update(self, T: Controller):
+	# 	pass
 
 	def draw(self, screen):
 
@@ -314,37 +388,177 @@ class Circle(Object):
 		# 子オブジェクト描画
 		super().draw(screen)
 
+class Line(Object):
+	def __init__(self, color: Color, start: Point, degree: float = 0, length: float = 1, weight: int = 1):
+		super().__init__(start)
+		self.vec = Vector2(1, 0).rotate(degree) * length
+		self.endPos = Point(self.vec.x, self.vec.y)
+		self.degree = degree
+		self.length = length
 
+		# tuple / Color 両対応
+		if type(color) == tuple:
+			self.color = Color.fromTuple(color)
+		elif type(color) == Color:
+			self.color = color
+		else:
+			raise TypeError("Invalid color type")
+		self.weight = weight
+
+	def getWorldEndPos(self):
+		if(self.parent == None):
+			return self.endPos
+		else:
+			return super().getWorldPos() + self.endPos
+	def setDegree(self, degree):
+		self.degree = degree
+	def getDegree(self):
+		return self.degree
+	def setLength(self, length):
+		self.length = length
+	def getLength(self):
+		return self.length
+
+	def update(self, T: Controller):
+		self.vec = Vector2(1, 0).rotate(self.degree) * self.length
+		self.endPos = Point(self.vec.x, self.vec.y)
+		pass
+
+	def draw(self, screen):
+		pygame.draw.line(
+			screen,
+			self.color.getTuple(),
+			self.getWorldPos().getTuple(),
+			self.getWorldEndPos().getTuple(),
+			self.weight
+		)
+		super().draw(screen)
+class RLine(Line):
+	def __init__(self, color: Color, start: Point, degree: float = 0, length: float = 1, weight: int = 1):
+		super().__init__(color, start, degree, length, weight)
+	def update(self, T: Controller):
+		super().update(T)
+		if(type(self.parent) == MainCircle):
+
+			self.endPos = Vector2(1, 0).rotate(self.parent.getDegree() + self.getDegree() ) * self.parent.getRadius()
+		#self.setDegree(self.getDegree() + self.parent.getDegreeOffset())
+
+class PosCircle(Circle):
+	def __init__(
+		self,
+		color: Color,
+		basePos: Point,
+		radius: int=0,
+		degree: float = 0,
+		length: float = 1,
+		weight: int = 1
+	):
+		super().__init__(color, basePos, radius, weight)
+		# 移動のためのパラメータ
+		self.degree = degree
+		self.length = length
+		# 
+		self.bacePos = basePos
+		self.vec = Vector2(1, 0).rotate(degree) * length
+		self.setPos(Point(basePos.getX() + self.vec.x, basePos.getY() + self.vec.y))
+	def update(self, T: Controller):
+		if(type(self.parent) == MainCircle):
+			self.vec = Vector2(1, 0).rotate(self.parent.getDegree()) * self.parent.getRadius()
+			self.setPos(self.vec)
+
+		pass
+
+class MainCircle(Circle):
+	def __init__(self, color: Color, point: Point, radius: int, weight: int = 1):
+		super().__init__(color, point, radius, weight)
+		self.degree = 0
+		self.degree_offset = 0
+		self.dots = {}
+	def getDegree(self):
+		return self.degree
+	def setDegree(self, degree):
+		self.degree = degree
+	def getDegreeOffset(self):
+		return self.degree_offset
+	def setDegreeOffset(self, degree_offset):
+		self.degree_offset = degree_offset
+	def update(self, T: Controller):
+		# メイン円の更新ロジック
+		self.position.x = T.mouse_pos.getX()
+		self.degree = self.position.getX()
+		# vec = Vector2(1, 0).rotate(self.getDegree()) * self.getRadius()
+		# vec_str = f"{int(vec.x)},{int(vec.y)}"
+		# if vec_str not in self.dots:
+		# 	self.dots[vec_str] = Circle(
+		# 		Color.RED,
+		# 		self.getWorldPos() + vec,
+		# 		8,
+		# 		0
+		# 	)
+		# 	self.parent.addChild(self.dots[vec_str])
+		super().update(T)
+
+class Transformer(Object):
+	pass
 # ============================================================
 # メイン描画オブジェクト生成
 # ============================================================
 
 screen_size = Size(800, 600)
+world = World(Point(0, 0))
+
 
 # 中央に配置するメイン円
-main_circle = Circle(
+main_circle = MainCircle(
 	Color.GREEN,
-	screen_size / int(2),
+	Point(50, screen_size.getHeight()/2),
 	50,
 	2
 )
-
+world.addChild(main_circle)
 # 円周上の点
 #
 # 今後ここを回転させて
 # sin / cos の可視化につなげたい
 main_circle.addChild(
-	Circle(
+	PosCircle(
 		Color.RED,
 		Point(-main_circle.getRadius(), 0),
 		8,
 		0
 	)
 )
-
-
-def main_loop(screen):
-
+main_circle.addChild(
+	RLine(
+		Color.BLUE,
+		Point(0, 0),
+		0,
+		50,
+		2
+	)
+)
+main_circle.addChild(
+	RLine(
+		Color.BLUE,
+		Point(0, 0),
+		120,
+		50,
+		2
+	)
+)
+main_circle.addChild(
+	RLine(
+		Color.BLUE,
+		Point(0, 0),
+		240,
+		50,
+		2
+	)
+)
+mouse_pos = Point(0, 0)
+def main_loop(screen, controller):
+	controller.update()
+	mouse_pos.setPosition(pygame.mouse.get_pos())
 	# 背景クリア
 	screen.fill(Color.WHITE)
 
@@ -364,8 +578,9 @@ def main_loop(screen):
 		(screen_size.getWidth()/2, screen_size.getHeight())
 	)
 
+	world.update(controller)
 	# オブジェクト描画
-	main_circle.draw(screen)
+	world.draw(screen)
 
 
 def main():
@@ -378,15 +593,22 @@ def main():
 
 	# タイトル設定
 	pygame.display.set_caption("テスト")
-
+	controller = Controller()
 	while (1):
-
+		start = pygame.time.get_ticks()
 		# 1フレーム描画
-		main_loop(screen)
+		main_loop(screen, controller)
 
+		main_loop_time = pygame.time.get_ticks() - start
+		print(f"Main loop time: {main_loop_time} ms")
+
+		start = pygame.time.get_ticks()
 		# 画面反映
 		pygame.display.update()
+		display_update_time = pygame.time.get_ticks() - start
+		print(f"Display update time: {display_update_time} ms")
 
+		start = pygame.time.get_ticks()
 		# イベント処理
 		for event in pygame.event.get():
 
@@ -394,7 +616,7 @@ def main():
 			if event.type == QUIT:
 				pygame.quit()
 				sys.exit()
-
-
+		event_processing_time = pygame.time.get_ticks() - start
+		print(f"Event processing time: {event_processing_time} ms")	
 if __name__ == "__main__":
 	main()
